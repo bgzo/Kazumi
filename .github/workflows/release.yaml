@@ -358,25 +358,35 @@
           - name: Setup Android build tools
             run: sdkmanager "build-tools;34.0.0"
   
-          - name: Download windows zip build file
-            uses: actions/download-artifact@v4
-            with:
-              name: windows_zip_signed_outputs
-              path: windows_zip_signed_outputs 
-          - name: List files in windows_outputs directory
-            run: ls -l windows_zip_signed_outputs   
-          - name: Copy windows build file to root
-            run: cp windows_zip_signed_outputs/* Kazumi_windows_${{ env.tag }}.zip
+#          - name: Download windows zip build file
+#            uses: actions/download-artifact@v4
+#            with:
+#              name: windows_zip_signed_outputs
+#              path: windows_zip_signed_outputs
+#          - name: List files in windows_outputs directory
+#            run: ls -l windows_zip_signed_outputs
+#          - name: Copy windows build file to root
+#            run: cp windows_zip_signed_outputs/* Kazumi_windows_${{ env.tag }}.zip
 
-          - name: Download windows msix build file
+#          - name: Download windows msix build file
+#            uses: actions/download-artifact@v4
+#            with:
+#              name: windows_msix_signed_outputs
+#              path: windows_msix_signed_outputs
+#          - name: List files in windows_msix_signed_outputs directory
+#            run: ls -l windows_msix_signed_outputs
+#          - name: Copy windows build file to root
+#            run: cp windows_msix_signed_outputs/* Kazumi_windows_${{ env.tag }}.msix
+
+          - name: Download windows build file
             uses: actions/download-artifact@v4
             with:
-              name: windows_msix_signed_outputs
-              path: windows_msix_signed_outputs  
-          - name: List files in windows_msix_signed_outputs directory
-            run: ls -l windows_msix_signed_outputs   
+              name: windows_outputs
+              path: windows_outputs
+          - name: List files in windows_outputs directory
+            run: ls -l windows_outputs
           - name: Copy windows build file to root
-            run: cp windows_msix_signed_outputs/* Kazumi_windows_${{ env.tag }}.msix
+            run: cp windows_outputs/* Kazumi_windows_${{ env.tag }}.zip
 
           - name: Download android build file
             uses: actions/download-artifact@v4
