@@ -432,27 +432,12 @@
           - name: Copy linux build file to root
             run: cp linux_outputs/* .
 
-#          - name: Sign APK
-#            id: sign_app
-#            uses: filippoLeporati93/android-release-signer@v1
-#            with:
-#              releaseDirectory: build/unsigned
-#              signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
-#              alias: ${{ secrets.KEY_ALIAS }}
-#              keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-#            env:
-#              BUILD_TOOLS_VERSION: "34.0.0"
-
-#          - name: Copy Signed android build file
-#            run: cp ${{steps.sign_app.outputs.signedReleaseFile}} build/signed/Kazumi_android_${{ env.tag }}.apk
-
           - name: Create release
             uses: softprops/action-gh-release@v2
             with:
               files: |
                 build/unsigned/*.apk
                 Kazumi_windows_*.zip
-#                Kazumi_windows_*.msix
                 Kazumi_macos_*.dmg
                 Kazumi_ios_*.ipa
                 Kazumi_linux_*.tar.gz
