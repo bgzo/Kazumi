@@ -73,12 +73,12 @@ class _PlayerSettingsPageState extends State<WebDavSettingsPage> {
         await webDav.ping();
         try {
           await webDav.updateHistory();
-          KazumiDialog.showToast(message: '同步成功');
+          KazumiDialog.showToast(message: 'WebDav同步成功');
         } catch (e) {
-          KazumiDialog.showToast(message: '同步失败 ${e.toString()}');
+          KazumiDialog.showToast(message: 'WebDav同步失败 ${e.toString()}');
         }
       } catch (e) {
-        KazumiDialog.showToast(message: 'WebDAV连接失败');
+        KazumiDialog.showToast(message: 'WebDav连接失败');
       }
     } else {
       KazumiDialog.showToast(message: '未开启WebDav同步或配置无效');
@@ -228,16 +228,10 @@ class _PlayerSettingsPageState extends State<WebDavSettingsPage> {
                       } else {
                         if (!bangumi.initialized) {
                           try {
-                            await bangumi.ping();
-                            try {
-                              await bangumi.init();
-                            } catch (e) {
-                              KazumiDialog.showToast(message: 'Bangumi 初始化失败');
-                              return;
-                            }
+                            await bangumi.init();
                           } catch (e) {
                             KazumiDialog.showToast(
-                                message: "bangumi 服务器连接失败，请稍后再试");
+                                message: "Bangumi 初始化失败，请稍后再试");
                             return;
                           }
                         }
@@ -246,10 +240,13 @@ class _PlayerSettingsPageState extends State<WebDavSettingsPage> {
                     bangumiSyncEnable = tBangumiEnableSync;
                     await setting.put(
                         SettingBoxKey.bangumiSyncEnable, bangumiSyncEnable);
-                      setState(() {});
+                    if (!mounted) {
+                      return;
+                    }
+                    setState(() {});
                     },
                     title: Text('Bangumi 同步', style: TextStyle(fontFamily: fontFamily)),
-                    description: Text('允许与Bangumi自动同步观看记录', style: TextStyle(fontFamily: fontFamily)),
+                    description: Text('允许与Bangumi自动同步收藏/追番状态', style: TextStyle(fontFamily: fontFamily)),
                     initialValue: bangumiSyncEnable,
                 ),
                 SettingsTile.navigation(

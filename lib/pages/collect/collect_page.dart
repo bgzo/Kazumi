@@ -49,7 +49,7 @@ class _CollectPageState extends State<CollectPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Bangumi 首次全量同步中',
+                    'Bangumi 全量同步中',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 12),
@@ -86,11 +86,11 @@ class _CollectPageState extends State<CollectPage>
         },
       );
     } finally {
-      progressValue.dispose();
-      progressText.dispose();
       if (KazumiDialog.observer.hasKazumiDialog) {
         KazumiDialog.dismiss();
       }
+      progressValue.dispose();
+      progressText.dispose();
     }
   }
 
@@ -187,8 +187,8 @@ class _CollectPageState extends State<CollectPage>
                 await _syncBangumiWithProgress();
               }
               if (webDavenable && bgmSyncEnable) {
-                // 如果两个同步都开启了，那么在完成 Bangumi 同步后再执行 WebDAV 同步
-                // 确保 WebDAV 同步时已经包含了最新的 Bangumi 收藏数据，
+                // 如果两个同步都开启了，那么在完成 Bangumi 同步后再上传到 WebDAV
+                // 确保上传到 WebDAV 的内容已经包含了最新的 Bangumi 收藏数据
                 await collectController.uploadCollectiblesToWebDav();
               }
             } finally {

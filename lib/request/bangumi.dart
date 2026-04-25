@@ -8,27 +8,12 @@ import 'package:kazumi/modules/characters/characters_response.dart';
 import 'package:kazumi/modules/bangumi/episode_item.dart';
 import 'package:kazumi/modules/character/character_full_item.dart';
 import 'package:kazumi/modules/staff/staff_response.dart';
-import 'package:kazumi/modules/collect/collect_module_bangumi.dart';
+import 'package:kazumi/modules/bangumi/bangumi_collection.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
+import 'package:kazumi/modules/collect/collect_type_mapper.dart';
+import 'package:kazumi/modules/bangumi/bangumi_collection_type.dart';
 
 class BangumiHTTP {
-  static String _collectionTypeLabel(int collectionType) {
-    switch (collectionType) {
-      case 1:
-        return '想看';
-      case 2:
-        return '看过';
-      case 3:
-        return '在看';
-      case 4:
-        return '搁置';
-      case 5:
-        return '抛弃';
-      default:
-        return '未知';
-    }
-  }
-
   // why the api havn't been replaced by getCalendarBySearch?
   // Because getCalendarBySearch is not stable, it will miss some bangumi items.
   static Future<List<List<BangumiItem>>> getCalendar() async {
@@ -330,47 +315,60 @@ class BangumiHTTP {
     try {
       final res = await Request().get(
         Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiUsernameByToken, []),
+        extra: {'customError': ''},
         shouldRethrow: true,
       );
       if (res.data['id'] != null) {
-        return res.data['username'] ?? '未知用户';
+        return res.data['username'] ?? 'Unknown';
       }
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
-        KazumiLogger().e('unauthorized 未经授权的');
+        KazumiLogger().e('Bangumi token unauthorized, please check your token');
+        throw StateError('Bangumi token unauthorized');
       }
-      throw StateError('token未经授权，请更新token');
+      rethrow;
     } catch (e) {
       KazumiLogger().e('Network: get username failed', error: e);
     }
     return null;
   }
 
-  static Future<List<BangumiRemoteCollection>> getBangumiCollectibles({
-    List<int> includeBangumiTypes = const [
-        1, // 想看
-        2, // 看过
-        3, // 在看
-        4, // 搁置
-        5 // 抛弃
-  ],
+  /// Get the Bangumi collection of the current user, with customizable collection types to include.
+  ///
+  /// [includeBangumiTypes] The collection types to include, default is all types (1-5).
+  /// [username] The Bangumi username to reuse when the caller already has it.
+  /// [onProgress] The callback function to report progress, with parameters (message, current, total).
+  static Future<List<BangumiCollection>> getBangumiCollectibles({
+    List<BangumiCollectionType> includeBangumiTypes = const [
+      BangumiCollectionType.planToWatch,
+      BangumiCollectionType.watched,
+      BangumiCollectionType.watching,
+      BangumiCollectionType.onHold,
+      BangumiCollectionType.abandoned,
+    ],
+    String? username,
     void Function(String message, int current, int total)? onProgress,
   }) async {
-    final List<BangumiRemoteCollection> bangumiCollection = [];
-    final username = await getUsername();
+    final List<BangumiCollection> bangumiCollection = [];
+    final resolvedUsername =
+        username != null && username.isNotEmpty ? username : await getUsername();
     int failedItemCount = 0;
     int progressCurrent = 0;
     int progressTotal = 0;
-    if (username == null) {
+    if (resolvedUsername == null) {
       KazumiLogger().w('get username failed');
       return [];
     }
 
     try {
-      const int limit = 50;
+      // Bangumi fetch page size
+      const int limit = 100;
       const Duration requestInterval = Duration(milliseconds: 250);
 
       for (final collectionType in includeBangumiTypes) {
+        if (collectionType == BangumiCollectionType.unknown) {
+          continue;
+        }
         int offset = 0;
         int? total;
         bool totalInitialized = false;
@@ -378,11 +376,19 @@ class BangumiHTTP {
           Response<dynamic> res;
           try {
             final url =
-                '${Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiGetCollection, [username, limit, offset])}&type=$collectionType';
-            res = await Request().get(url, shouldRethrow: true);
+                '${Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiGetCollection, [
+                  resolvedUsername,
+                  limit,
+                  offset
+                ])}&type=${collectionType.value}';
+            res = await Request().get(
+              url,
+              extra: {'customError': ''},
+              shouldRethrow: true,
+            );
           } catch (e) {
             KazumiLogger().e(
-              'BangumiHTTP: fetch collection failed. type=$collectionType, offset=$offset',
+              'BangumiHTTP: fetch collection failed. type=${collectionType.value}, offset=$offset',
               error: e,
             );
             break;
@@ -399,10 +405,10 @@ class BangumiHTTP {
           for (dynamic jsonItem in jsonList) {
             if (jsonItem is Map<String, dynamic>) {
               try {
-                bangumiCollection.add(BangumiRemoteCollection.fromJson(jsonItem));
+                bangumiCollection.add(BangumiCollection.fromJson(jsonItem));
                 progressCurrent++;
                 onProgress?.call(
-                  '正在拉取${_collectionTypeLabel(collectionType)}收藏',
+                  '正在拉取${collectionType.label}收藏',
                   progressCurrent,
                   progressTotal,
                 );
@@ -427,21 +433,27 @@ class BangumiHTTP {
     } catch (e) {
       KazumiLogger().e('Network: get bangumi collection failed', error: e);
     }
-    KazumiLogger().d('get Bangumi collection count: ${bangumiCollection.length}');
+    KazumiLogger()
+        .d('get Bangumi collection count: ${bangumiCollection.length}');
     KazumiLogger().d('get item failed count: $failedItemCount');
     return bangumiCollection;
   }
 
-  /// 更新bgm番剧收藏，可自定义上传data
-  static Future<void> updateBangumiById(int id, Map<String, dynamic> data) async {
+  /// Update the Bangumi collection by ID, with customizable data to upload.
+  /// [id] The ID of the Bangumi item.
+  /// [data] The data to update, in the format of Bangumi collection API.
+  static Future<bool> updateBangumiById(
+      int id, Map<String, dynamic> data) async {
     const Duration requestInterval = Duration(milliseconds: 250);
     try {
       await Request().post(
         Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiSetCollection, [id]),
         data: data,
+        extra: {'customError': ''},
         shouldRethrow: true,
       );
       KazumiLogger().d('Update to Bangumi: Id: $id');
+      return true;
     } on DioException catch (e) {
       String str;
       switch (e.response?.statusCode) {
@@ -452,24 +464,31 @@ class BangumiHTTP {
           str = 'Unauthorized 未经授权';
           break;
         case 404:
-          str = '用户不存在';
+          str = 'User not found 用户不存在';
           break;
         default:
           str = 'Error $e';
       }
       KazumiLogger().e('BangumiApi: $str', error: e);
+      return false;
     } catch (e) {
       KazumiLogger().e('Network: update bangumi collection failed', error: e);
+      rethrow;
+    } finally {
+      await Future.delayed(requestInterval);
     }
-    await Future.delayed(requestInterval);
   }
 
-  /// 更新bgm番剧收藏，会将本地收藏type转换成bangumi收藏type
-  /// 
-  /// [id] 番剧id
-  /// [localType] 本地的收藏类型
-  static Future<void> updateBangumiByType(int id, int localType) async { 
-    final type = CollectType.fromValue(localType).toBangumi();
-    return await updateBangumiById(id, {'type': type});
+  /// Update the Bangumi collection by ID,
+  /// converting the local collection type to the Bangumi collection type.
+  ///
+  /// [id] The ID of the Bangumi item.
+  /// [localType] The local collection type.
+  static Future<bool> updateBangumiByType(int id, int localType) async {
+    final type = CollectType.fromValue(localType).toBangumiCollectionType();
+    if (type == null) {
+      return false;
+    }
+    return await updateBangumiById(id, {'type': type.value});
   }
 }

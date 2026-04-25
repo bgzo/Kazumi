@@ -35,7 +35,7 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
       defaultValue: true,
     );
     syncPriority =
-        setting.get(SettingBoxKey.bangumiSyncPriority, defaultValue: 1);
+        setting.get(SettingBoxKey.bangumiSyncPriority, defaultValue: 0);
   }
 
   @override
@@ -52,6 +52,13 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
   }
 
   Future<void> syncWithProgress() async {
+    final syncEnable =
+        setting.get(SettingBoxKey.bangumiSyncEnable, defaultValue: false);
+    if (!syncEnable) {
+      KazumiDialog.showToast(message: '请先开启 Bangumi 同步');
+      return;
+    }
+
     final ValueNotifier<double?> progressValue = ValueNotifier<double?>(null);
     final ValueNotifier<String> progressText =
         ValueNotifier<String>('准备同步 Bangumi 状态...');
@@ -100,7 +107,6 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
       final bangumi = Bangumi();
       await bangumi.ping();
       await bangumi.syncCollectibles(
-        force: true,
         onProgress: (message, current, total) {
           progressText.value =
               total > 0 ? '$message ($current/$total)' : message;
@@ -114,11 +120,11 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
     } catch (e) {
       KazumiDialog.showToast(message: 'Bangumi同步失败 $e');
     } finally {
-      progressValue.dispose();
-      progressText.dispose();
       if (KazumiDialog.observer.hasKazumiDialog) {
         KazumiDialog.dismiss();
       }
+      progressValue.dispose();
+      progressText.dispose();
       if (mounted) {
         setState(() {
           syncCollectiblesing = false;
@@ -143,7 +149,7 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                   controller: bangumiTokenController,
                   obscureText: !passwordVisible,
                   decoration: InputDecoration(
-                    labelText: 'bangumi Access Token',
+                    labelText: 'Bangumi Access Token',
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       onPressed: () {
