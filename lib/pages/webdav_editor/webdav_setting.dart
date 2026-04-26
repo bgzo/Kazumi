@@ -223,7 +223,7 @@ class _PlayerSettingsPageState extends State<WebDavSettingsPage> {
                           defaultValue: '');
                       if (token.isEmpty) {
                         KazumiDialog.showToast(
-                            message: '请先配置 Bangumi的Access Token');
+                             message: '请先配置 Bangumi 的 Access Token');
                         return;
                       } else {
                         if (!bangumi.initialized) {
@@ -257,7 +257,7 @@ class _PlayerSettingsPageState extends State<WebDavSettingsPage> {
                         defaultValue: false);
                     setState(() {});
                   },
-                  title: Text('Bangumi 高级配置', style: TextStyle(fontFamily: fontFamily)),
+                  title: Text('Bangumi 配置', style: TextStyle(fontFamily: fontFamily)),
                 ),
               ],
             ),

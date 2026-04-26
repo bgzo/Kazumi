@@ -1,14 +1,10 @@
-// ignore_for_file: library_private_types_in_public_api
-
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/collect/collect_module.dart';
-import 'package:kazumi/modules/collect/collect_change_module.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
-import 'package:kazumi/modules/collect/collect_type_mapper.dart';
 import 'package:kazumi/utils/bangumi.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:kazumi/utils/webdav.dart';
@@ -17,7 +13,6 @@ import 'package:kazumi/repositories/collect_repository.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:mobx/mobx.dart';
 import 'package:kazumi/utils/logger.dart';
-import 'package:kazumi/modules/bangumi/bangumi_collection_type.dart';
 
 part 'collect_controller.g.dart';
 
@@ -65,15 +60,16 @@ abstract class _CollectController with Store {
       return;
     }
 
+    // 判断新增还是修改收藏
+    final int currentCollectType = getCollectType(bangumiItem);
+    final int collectChangeAction = currentCollectType == 0 ? 1 : 2;
+
     await _collectCrudRepository.addCollectible(bangumiItem, type);
-    final int collectChangeId = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-    final CollectedBangumiChange collectChange = CollectedBangumiChange(
-        collectChangeId,
-        bangumiItem.id,
-        1,
-        type,
-        (DateTime.now().millisecondsSinceEpoch ~/ 1000));
-    await _collectCrudRepository.addCollectChange(collectChange);
+    await GStorage.appendCollectChange(
+      bangumiId: bangumiItem.id,
+      action: collectChangeAction,
+      type: type,
+    );
     loadCollectibles();
   }
 
@@ -109,14 +105,11 @@ abstract class _CollectController with Store {
 
   Future<void> _deleteCollectLocally(BangumiItem bangumiItem) async {
     await _collectCrudRepository.deleteCollectible(bangumiItem.id);
-    final int collectChangeId = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-    final CollectedBangumiChange collectChange = CollectedBangumiChange(
-        collectChangeId,
-        bangumiItem.id,
-        3,
-        5,
-        (DateTime.now().millisecondsSinceEpoch ~/ 1000));
-    await _collectCrudRepository.addCollectChange(collectChange);
+    await GStorage.appendCollectChange(
+      bangumiId: bangumiItem.id,
+      action: 3,
+      type: 5,
+    );
     loadCollectibles();
   }
 
@@ -228,10 +221,10 @@ abstract class _CollectController with Store {
     loadCollectibles();
   }
 
-  Future<void> syncCollectibles() async {
+  Future<bool> syncCollectibles({bool showSuccessToast = true}) async {
     if (!WebDav().initialized) {
       KazumiDialog.showToast(message: '未开启WebDav同步或配置无效');
-      return;
+      return false;
     }
     bool flag = true;
     try {
@@ -242,21 +235,26 @@ abstract class _CollectController with Store {
       flag = false;
     }
     if (!flag) {
-      return;
+      return false;
     }
     try {
       await WebDav().syncCollectibles();
-    } catch (e){
+      if (showSuccessToast) {
+        KazumiDialog.showToast(message: 'WebDav同步完成');
+      }
+    } catch (e) {
       KazumiDialog.showToast(message: 'WebDav同步失败 $e');
+      return false;
     }
     loadCollectibles();
+    return true;
   }
 
   /// 仅上传当前本地收藏与变更日志到 WebDAV，不做下载合并
-  Future<void> uploadCollectiblesToWebDav() async {
+  Future<bool> uploadCollectiblesToWebDav({bool showSuccessToast = true}) async {
     if (!WebDav().initialized) {
       KazumiDialog.showToast(message: '未开启WebDav同步或配置无效');
-      return;
+      return false;
     }
     bool flag = true;
     try {
@@ -267,13 +265,18 @@ abstract class _CollectController with Store {
       flag = false;
     }
     if (!flag) {
-      return;
+      return false;
     }
     try {
       await WebDav().updateCollectibles();
+      if (showSuccessToast) {
+        KazumiDialog.showToast(message: 'WebDav上传完成');
+      }
     } catch (e) {
       KazumiDialog.showToast(message: 'WebDav上传失败 $e');
+      return false;
     }
+    return true;
   }
 
   // migrate collect from old version (favorites)
@@ -281,10 +284,20 @@ abstract class _CollectController with Store {
     if (favorites.isNotEmpty) {
       int count = 0;
       for (BangumiItem bangumiItem in favorites) {
-        await addCollect(bangumiItem, type: 1);
+        // Migration should never depend on runtime Bangumi initialization.
+        // Persist locally and append change logs, then let later sync handle remote updates.
+        final int currentCollectType = getCollectType(bangumiItem);
+        final int collectChangeAction = currentCollectType == 0 ? 1 : 2;
+        await _collectCrudRepository.addCollectible(bangumiItem, 1);
+        await GStorage.appendCollectChange(
+          bangumiId: bangumiItem.id,
+          action: collectChangeAction,
+          type: 1,
+        );
         count++;
       }
       await _collectCrudRepository.clearFavorites();
+      loadCollectibles();
       KazumiLogger().d('GStorage: detected $count uncategorized favorites, migrated to collectibles');
     }
   }
@@ -310,41 +323,39 @@ abstract class _CollectController with Store {
         .toList();
   }
 
-  /// Put Bangumi's collect into local collectible,
-  /// convert Bangumi's collect type to local collect type
-  ///
-  /// [bangumiItem] Bangumi item
-  /// [bangumiType] Bangumi collect type
-  Future<void> addCollectBangumi(BangumiItem bangumiItem,
-      {bangumiType = 1}) async {
-    final type =
-        BangumiCollectionType.fromValue(bangumiType).toCollectType().value;
-    await addCollect(bangumiItem, type: type);
-  }
-
   /// Sync Bangumi collectibles.
-  ///
-  /// [onProgress] Progress callback, parameters are the name of the currently syncing Bangumi,
-  /// the index of the currently syncing Bangumi, and the total number of Bangumi.
-  /// The callback will be called when syncing each Bangumi, and can be used to show a progress indicator.
-  Future<void> syncCollectiblesBangumi(
+  Future<bool> syncCollectiblesBangumi(
       {void Function(String message, int current, int total)?
-          onProgress}) async {
+          onProgress,
+      bool showSuccessToast = true}) async {
+    final bool syncEnable =
+        setting.get(SettingBoxKey.bangumiSyncEnable, defaultValue: false);
+    if (!syncEnable) {
+      KazumiDialog.showToast(message: '未开启Bangumi同步或配置无效');
+      return false;
+    }
+
     if (!Bangumi().initialized) {
       KazumiDialog.showToast(message: '未开启Bangumi同步或配置无效');
-      return;
+      return false;
     }
     try {
       await Bangumi().ping();
       try {
         await Bangumi().syncCollectibles(onProgress: onProgress);
+        if (showSuccessToast) {
+          KazumiDialog.showToast(message: 'Bangumi同步完成');
+        }
       } catch (e) {
         KazumiDialog.showToast(message: 'Bangumi同步失败 $e');
+        return false;
       }
     } catch (e) {
       KazumiLogger().e('Bangumi: Bangumi connection failed', error: e);
       KazumiDialog.showToast(message: 'Bangumi访问失败: $e');
+      return false;
     }
     loadCollectibles();
+    return true;
   }
 }
