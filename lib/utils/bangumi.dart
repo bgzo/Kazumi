@@ -216,7 +216,7 @@ class Bangumi {
             if (!updated) {
               onProgress?.call('上传本地新增状态失败', syncedCount, totalOperations);
               KazumiDialog.showToast(message: '同步失败：条目 $id 上传到 Bangumi 失败');
-              return;
+              throw Exception('同步失败：条目 $id 上传到 Bangumi 失败');
             }
             syncedCount++;
             onProgress?.call('正在上传本地新增状态', syncedCount, totalOperations);
@@ -256,7 +256,7 @@ class Bangumi {
             onProgress?.call('本地优先：正在处理冲突状态', syncedCount, totalOperations);
           }
         } else {
-          onProgress?.call('Bangumi 优先：正在处理冲突状态', syncedCount, totalOperations);
+          onProgress?.call('Bangumi优先：正在处理冲突状态', syncedCount, totalOperations);
           for (final id in mismatchIds) {
             final local = localMap[id]!;
             final remote = remoteMap[id]!;
@@ -268,7 +268,7 @@ class Bangumi {
             await _recordCollectibleChange(id, 2, localType.value);
             syncedCount++;
             onProgress?.call(
-                'Bangumi 优先：正在处理冲突状态', syncedCount, totalOperations);
+                'Bangumi优先：正在处理冲突状态', syncedCount, totalOperations);
           }
         }
         onProgress?.call('Bangumi 状态同步完成', 1, 1);
