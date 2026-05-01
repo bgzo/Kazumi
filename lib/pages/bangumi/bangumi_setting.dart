@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/modules/bangumi/sync_priority.dart';
-import 'package:kazumi/utils/bangumi.dart';
+import 'package:kazumi/utils/bangumi_sync_service.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -45,15 +45,11 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
   }
 
   Future<void> updateSyncPriority(int value) async {
-    try {
-      await setting.put(SettingBoxKey.bangumiSyncPriority, value);
-      if (!mounted) return;
-      setState(() {
-        syncPriority = value;
-      });
-    } catch (e) {
-      KazumiDialog.showToast(message: '同步优先级保存失败');
-    }
+    await setting.put(SettingBoxKey.bangumiSyncPriority, value);
+    if (!mounted) return;
+    setState(() {
+      syncPriority = value;
+    });
   }
 
   Future<void> syncWithProgress() async {
@@ -76,32 +72,37 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
       KazumiDialog.show(
         clickMaskDismiss: false,
         builder: (context) {
-          return Dialog(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: SizedBox(
-                width: 340,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Bangumi 同步进行中',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 12),
-                    ValueListenableBuilder<String>(
-                      valueListenable: progressText,
-                      builder: (_, value, __) => Text(value),
-                    ),
-                    const SizedBox(height: 12),
-                    ValueListenableBuilder<double?>(
-                      valueListenable: progressValue,
-                      builder: (_, value, __) =>
-                          LinearProgressIndicator(value: value),
-                    ),
-                  ],
+          return PopScope(
+            canPop: false,
+            child: Dialog(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: SizedBox(
+                  width: 340,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Bangumi 同步进行中',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ValueListenableBuilder<String>(
+                        valueListenable: progressText,
+                        builder: (_, value, __) => Text(value),
+                      ),
+                      const SizedBox(height: 12),
+                      ValueListenableBuilder<double?>(
+                        valueListenable: progressValue,
+                        builder: (_, value, __) =>
+                            LinearProgressIndicator(value: value),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -109,7 +110,7 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
         },
       );
 
-      final bangumi = Bangumi();
+      final bangumi = BangumiSyncService();
       await bangumi.ping();
       await bangumi.syncCollectibles(
         onProgress: (message, current, total) {
@@ -292,11 +293,11 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                   isVerifying = true;
                 });
                 await setting.put(SettingBoxKey.bangumiAccessToken, token);
-                final bangumi = Bangumi();
+                final bangumi = BangumiSyncService();
 
                 if (token.isEmpty) {
                   bangumi.reset();
-                  KazumiDialog.showToast(message: 'Bangumi Token 已清空');
+                  KazumiDialog.showToast(message: 'Bangumi Token 为空，请检查');
                   if (!mounted) return;
                   setState(() {
                     isVerifying = false;
@@ -317,7 +318,7 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                   return;
                 }
 
-                KazumiDialog.showToast(message: '测试成功');
+                KazumiDialog.showToast(message: '测试成功，用户名：${bangumi.username}');
                 if (!mounted) return;
                 setState(() {
                   isVerifying = false;
